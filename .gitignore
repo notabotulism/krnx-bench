@@ -1,0 +1,45 @@
+# Environment & Secrets - NEVER COMMIT
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+secrets.yaml
+secrets.json
+
+# Keep the example
+!.env.example
+
+# Outputs
+outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.eggs/
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/

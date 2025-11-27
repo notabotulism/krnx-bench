@@ -1,0 +1,80 @@
+# KRNX Benchmark Docker Compose
+# ==============================
+#
+# This compose file defines the infrastructure for benchmark runs.
+# 
+# Usage:
+#   docker compose -f docker/docker-compose.bench.yml up -d
+#   docker compose -f docker/docker-compose.bench.yml down
+#
+# Note: The benchmark harness manages these containers automatically.
+# This file is provided for manual testing and debugging.
+
+services:
+  # Redis Stack (for KRNX)
+  redis:
+    image: redis/redis-stack:latest
+    container_name: krnx-bench-redis
+    ports:
+      - "6379:6379"
+      - "8001:8001"  # RedisInsight
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - krnx-bench
+
+  # KRNX Server
+  krnx:
+    image: krnx:latest
+    container_name: krnx-bench-server
+    ports:
+      - "8100:8000"
+    environment:
+      - KRNX_REDIS_URL=redis://redis:6379
+      - KRNX_SQLITE_PATH=/data/krnx.db
+      - KRNX_LOG_LEVEL=INFO
+    volumes:
+      - krnx-data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - krnx-bench
+
+  # Qdrant (for Naive RAG baseline)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: krnx-bench-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"  # gRPC
+    volumes:
+      - qdrant-data:/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - krnx-bench
+
+networks:
+  krnx-bench:
+    driver: bridge
+    name: krnx-bench-network
+
+volumes:
+  redis-data:
+  krnx-data:
+  qdrant-data:

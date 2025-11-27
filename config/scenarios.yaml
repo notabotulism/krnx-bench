@@ -1,0 +1,77 @@
+# KRNX Benchmark Scenario Configuration
+# ======================================
+
+# Durability Scenarios
+durability:
+  crash_recovery:
+    # Event counts to test
+    event_counts:
+      - 1000
+      - 10000
+    
+    # Random delay before kill (seconds)
+    kill_delay_range:
+      - 0.5
+      - 2.0
+    
+    # Number of trials per event count
+    trials_per_count: 5
+
+# Consistency Scenarios
+consistency:
+  fact_correction:
+    # Number of fact versions to create
+    versions: 5
+    
+    # Distractor messages between versions
+    distractors_per_version: 100
+    
+    # Type of fact to test
+    # Options: email, phone, address, budget
+    fact_type: "email"
+  
+  temporal_versioning:
+    # Number of fact versions
+    versions: 5
+    
+    # Timestamps to query
+    query_points: 3
+    
+    # Delay between versions (seconds)
+    delay_between_versions: 1.0
+
+# Auditability Scenarios
+auditability:
+  provenance_chain:
+    # Number of steps in workflow
+    workflow_steps: 5
+
+# Replay Scenarios
+replay:
+  point_in_time:
+    # History sizes to test
+    history_sizes:
+      - 100
+      - 1000
+      - 10000
+    
+    # Checkpoints per history size
+    checkpoints_per_size: 5
+  
+  determinism:
+    # History size for determinism test
+    history_size: 1000
+
+# Baseline Scenarios
+baseline:
+  niah:
+    # Corpus sizes to test
+    corpus_sizes:
+      - 100
+      - 1000
+    
+    # Needle positions to test
+    needle_positions:
+      - "front"
+      - "middle"
+      - "end"

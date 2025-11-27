@@ -1,0 +1,44 @@
+# KRNX Benchmark Harness Dockerfile
+# ==================================
+#
+# This Dockerfile builds a containerized version of the benchmark harness.
+# Useful for CI/CD pipelines or reproducible benchmark environments.
+#
+# Build:
+#   docker build -f docker/Dockerfile.bench -t krnx-bench .
+#
+# Run:
+#   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+#     -e OPENAI_API_KEY=$OPENAI_API_KEY \
+#     krnx-bench suite
+
+FROM python:3.11-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Docker CLI (for controlling sibling containers)
+RUN curl -fsSL https://get.docker.com -o get-docker.sh \
+    && sh get-docker.sh \
+    && rm get-docker.sh
+
+# Set working directory
+WORKDIR /app
+
+# Copy project files
+COPY pyproject.toml .
+COPY cli.py .
+COPY bench/ bench/
+COPY config/ config/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -e .
+
+# Create output directory
+RUN mkdir -p outputs
+
+# Default command
+ENTRYPOINT ["krnx-bench"]
+CMD ["--help"]

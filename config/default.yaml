@@ -1,20 +1,18 @@
 # KRNX Benchmark Harness Configuration
 # =====================================
+# 
+# IMPORTANT: Benchmark uses ISOLATED PORTS to avoid conflicts with local dev:
+#   - Redis: 16379 (not 6379)
+#   - KRNX:  16380 (not 6380)  
+#   - Qdrant: 16333 (not 6333)
+#
+# This allows running benchmarks while your dev environment is active.
 
 # LLM Configuration
 llm:
-  # Provider: "openai" or "anthropic"
   provider: "openai"
-  
-  # Model to use for generation
-  # OpenAI: gpt-4-turbo-preview, gpt-4, gpt-3.5-turbo
-  # Anthropic: claude-3-opus-20240229, claude-3-sonnet-20240229
   model: "gpt-4-turbo-preview"
-  
-  # Temperature for generation (0.0 for maximum determinism)
   temperature: 0.0
-  
-  # Maximum tokens for response
   max_tokens: 1024
 
 # Embedding Configuration
@@ -26,67 +24,40 @@ embedding:
 # Adapter Configuration
 adapters:
   krnx:
-    # Docker image for KRNX server
     image: "krnx:latest"
     
-    # Port mappings
-    port: 8100
-    redis_port: 6379
+    # ISOLATED PORTS - won't conflict with local Redis/KRNX
+    port: 16380          # Benchmark KRNX API
+    redis_port: 16379    # Benchmark Redis (internal to KRNX)
     
-    # Health check endpoint
-    health_endpoint: "/health"
-    
-    # Startup timeout (seconds)
+    health_endpoint: "/api/v1/health"
     timeout: 60
-    
-    # Retrieval settings
     top_k: 10
   
   naive_rag:
-    # Docker image for Qdrant
     image: "qdrant/qdrant:latest"
-    
-    # Port mapping
-    port: 6333
-    
-    # Retrieval settings
+    port: 16333          # Benchmark Qdrant
     top_k: 10
-    
-    # Startup timeout
     timeout: 30
   
   baseline:
-    # No configuration needed
     type: "none"
 
 # Default Settings
 defaults:
-  # Number of trials per scenario/adapter combination
   trials: 50
-  
-  # Global timeout for operations (seconds)
   timeout: 300
 
 # Docker Configuration
 docker:
-  # Network name for containers
   network: "krnx-bench-network"
-  
-  # Remove containers on exit
   remove_on_exit: true
-  
-  # Log level for docker operations
   log_level: "INFO"
 
 # Output Configuration
 output:
-  # Default output directory
   base_dir: "outputs"
-  
-  # Run output format
   runs_dir: "runs"
   reports_dir: "reports"
-  
-  # Chart settings
   chart_dpi: 150
   chart_format: "png"

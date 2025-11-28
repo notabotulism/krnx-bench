@@ -1,6 +1,9 @@
 """
 Naive RAG adapter using Qdrant for benchmarking.
 
+Uses ISOLATED PORTS (16xxx) to avoid conflicts with local development:
+- Qdrant: 16333 (host) -> 6333 (container)
+
 This represents the "industry standard" approach:
 - Simple vector store
 - Top-k retrieval by embedding similarity
@@ -10,19 +13,21 @@ This represents the "industry standard" approach:
 import time
 import uuid
 import logging
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     VectorParams, 
     Distance, 
     PointStruct,
-    Filter,
 )
 
 from .base import BaseAdapter, AdapterError, NotSupported
 from .docker_utils import DockerManager, ServiceConfig
 from ..models import Event, QueryResult
+
+if TYPE_CHECKING:
+    from ..llm.client import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +56,12 @@ class NaiveRAGAdapter(BaseAdapter):
         self.docker = DockerManager()
         self.qdrant: Optional[QdrantClient] = None
         
-        # Config
-        self.port = config.get("port", 6333)
+        # Host port (isolated - 16xxx range)
+        self.host_port = config.get("port", 16333)
+        
+        # Container port (standard)
+        self.container_port = 6333
+        
         self.collection_name = "benchmark"
         self.embedding_dim = 1536  # OpenAI ada-002
         self.top_k = config.get("top_k", 10)
@@ -70,21 +79,31 @@ class NaiveRAGAdapter(BaseAdapter):
         return self._embedding_client
     
     def setup(self) -> None:
-        """Start Qdrant container"""
+        """Start Qdrant container on isolated port"""
         
         logger.info("Setting up Naive RAG adapter (Qdrant)...")
+        logger.info(f"  Qdrant: localhost:{self.host_port} -> container:6333")
         
-        # Start Qdrant
+        # Start Qdrant with isolated port mapping
         qdrant_config = ServiceConfig(
             name="qdrant",
             image="qdrant/qdrant:latest",
-            ports={"6333": self.port},
-            healthcheck_url=f"http://localhost:{self.port}/health",
+            ports={str(self.container_port): self.host_port},
+            healthcheck_url=f"http://localhost:{self.host_port}/health",
         )
-        self.docker.start_service(qdrant_config, timeout=self.timeout)
         
-        # Connect client
-        self.qdrant = QdrantClient(host="localhost", port=self.port)
+        try:
+            self.docker.start_service(qdrant_config, timeout=self.timeout)
+        except Exception as e:
+            if "address already in use" in str(e).lower():
+                raise AdapterError(
+                    f"Port {self.host_port} is already in use. "
+                    f"Either stop the conflicting service or change port in config/default.yaml"
+                ) from e
+            raise
+        
+        # Connect client to host port
+        self.qdrant = QdrantClient(host="localhost", port=self.host_port)
         
         # Create collection
         self._create_collection()
@@ -134,7 +153,8 @@ class NaiveRAGAdapter(BaseAdapter):
         self._ensure_setup()
         
         # Get embedding
-        embedding = self._embed(event.content)
+        content_text = event.content if isinstance(event.content, str) else str(event.content)
+        embedding = self._embed(content_text)
         
         # Generate ID
         event_id = str(uuid.uuid4())
@@ -210,11 +230,35 @@ class NaiveRAGAdapter(BaseAdapter):
         )
         return response.data[0].embedding
     
+    def _build_prompt(self, query: str, events: list) -> str:
+        """Build LLM prompt with context"""
+        
+        if not events:
+            return f"Question: {query}\n\nAnswer based on your knowledge:"
+        
+        context_parts = []
+        for i, event in enumerate(events[:10]):
+            content = event.get("content", "")
+            if isinstance(content, dict):
+                text = content.get("text", str(content))
+            else:
+                text = str(content)
+            context_parts.append(f"[{i+1}] {text}")
+        
+        context_str = "\n".join(context_parts)
+        
+        return f"""Context from memory:
+{context_str}
+
+Question: {query}
+
+Answer based on the context above:"""
+    
     # =========================================================================
-    # Unsupported operations
+    # Limited operations
     # =========================================================================
     
-    def get_event(self, event_hash: str) -> Event:
+    def get_event(self, event_id: str) -> Event:
         """Retrieve by ID (limited support)"""
         
         self._ensure_setup()
@@ -222,11 +266,11 @@ class NaiveRAGAdapter(BaseAdapter):
         try:
             results = self.qdrant.retrieve(
                 collection_name=self.collection_name,
-                ids=[event_hash],
+                ids=[event_id],
             )
             
             if not results:
-                raise KeyError(f"Event not found: {event_hash}")
+                raise KeyError(f"Event not found: {event_id}")
             
             payload = results[0].payload
             return Event(
@@ -240,13 +284,13 @@ class NaiveRAGAdapter(BaseAdapter):
         
         except Exception as e:
             if "not found" in str(e).lower():
-                raise KeyError(f"Event not found: {event_hash}")
+                raise KeyError(f"Event not found: {event_id}")
             raise AdapterError(f"Failed to retrieve event: {e}")
     
     def replay_to(self, timestamp: float):
         raise NotSupported("Naive RAG does not support temporal replay")
     
-    def get_provenance(self, event_hash: str):
+    def get_provenance(self, event_id: str):
         raise NotSupported("Naive RAG does not support provenance tracking")
     
     # Fault injection - limited support
@@ -260,8 +304,8 @@ class NaiveRAGAdapter(BaseAdapter):
         logger.info("Restarting Qdrant container (data will be lost)...")
         self.docker.restart_service("qdrant", timeout=self.timeout)
         
-        # Reconnect
-        self.qdrant = QdrantClient(host="localhost", port=self.port)
+        # Reconnect to host port
+        self.qdrant = QdrantClient(host="localhost", port=self.host_port)
         self._create_collection()
     
     def is_alive(self) -> bool:

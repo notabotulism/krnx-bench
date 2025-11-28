@@ -1,5 +1,7 @@
 """
 Configuration loading and management.
+
+Benchmark uses ISOLATED PORTS (16xxx) to avoid conflicts with local development.
 """
 
 from pathlib import Path
@@ -22,14 +24,15 @@ DEFAULT_CONFIG = {
     "adapters": {
         "krnx": {
             "image": "krnx:latest",
-            "port": 8100,
-            "redis_port": 6379,
-            "health_endpoint": "/health",
+            "port": 16380,        # ISOLATED: won't conflict with local KRNX on 6380
+            "redis_port": 16379,  # ISOLATED: won't conflict with local Redis on 6379
+            "health_endpoint": "/api/v1/health",
             "timeout": 60,
+            "top_k": 10,
         },
         "naive_rag": {
             "image": "qdrant/qdrant:latest",
-            "port": 6333,
+            "port": 16333,        # ISOLATED: won't conflict with local Qdrant on 6333
             "top_k": 10,
             "timeout": 30,
         },
@@ -121,7 +124,7 @@ def get_scenario_config(config: dict, scenario_name: str) -> dict:
     
     # Find the scenario in the nested structure
     for guarantee, scenario_configs in scenarios.items():
-        if scenario_name in scenario_configs:
+        if isinstance(scenario_configs, dict) and scenario_name in scenario_configs:
             return scenario_configs[scenario_name]
     
     # Return empty config if not found
